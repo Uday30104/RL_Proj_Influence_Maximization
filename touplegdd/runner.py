@@ -137,13 +137,16 @@ class Runner:
             if epoch % 10 == 0:
                 # test
                 rewards, seeds, influences, comms = self.play_game(1, 0.0, training=False)
-                tqdm.write(f'{epoch}/{num_epoch}: ({str(seeds[0])[1:-1]}) | Reward: {rewards[0]:.2f} | Inf: {influences[0]:.2f} | Comms: {comms[0]:.2f}')                
+                avg_reward = mean(rewards)
+                avg_inf = mean(influences)
+                avg_comms = mean(comms)
+                tqdm.write(f'{epoch}/{num_epoch}: [Avg across {len(rewards)} graphs] | Reward: {avg_reward:.2f} | Inf: {avg_inf:.2f} | Comms: {avg_comms:.2f}')                
                 
                 # Record metrics
                 history_epochs.append(epoch)
-                history_test_rewards.append(rewards[0])
-                history_test_influences.append(influences[0])
-                history_test_comms.append(comms[0])
+                history_test_rewards.append(avg_reward)
+                history_test_influences.append(avg_inf)
+                history_test_comms.append(avg_comms)
                 if len(current_losses) > 0:
                     history_train_losses.append(mean(current_losses))
                 else:
@@ -165,7 +168,10 @@ class Runner:
 
         # show test results after training
         rewards, seeds, influences, comms = self.play_game(1, 0.0, training=False)
-        tqdm.write(f'{num_epoch}/{num_epoch}: ({str(seeds[0])[1:-1]}) | Reward: {rewards[0]:.2f} | Inf: {influences[0]:.2f} | Comms: {comms[0]:.2f}')
+        avg_reward = mean(rewards)
+        avg_inf = mean(influences)
+        avg_comms = mean(comms)
+        tqdm.write(f'{num_epoch}/{num_epoch}: [Avg across {len(rewards)} graphs] | Reward: {avg_reward:.2f} | Inf: {avg_inf:.2f} | Comms: {avg_comms:.2f}')
 
         self.agent.save_model(model_file)
         

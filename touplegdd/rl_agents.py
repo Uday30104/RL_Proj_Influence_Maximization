@@ -92,7 +92,7 @@ class DQAgent:
 
         if not self.training:
             cwd = os.getcwd()
-            self.model.load_state_dict(torch.load(os.path.join(cwd, args.model_file)))
+            self.model.load_state_dict(torch.load(os.path.join(cwd, args.model_file)), strict=False)
             self.model.eval()
 
     def reset(self):
@@ -151,7 +151,7 @@ class DQAgent:
                 data.append(d)
 
         with torch.no_grad():
-            loader = DataLoader(data, pin_memory=True, num_workers=4, batch_size=sample_size, shuffle=False)
+            loader = DataLoader(data, pin_memory=False, num_workers=4, batch_size=sample_size, shuffle=False)
             for batch in loader:
                 if actions is not None:
                     total_num = 0

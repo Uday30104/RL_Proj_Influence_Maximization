@@ -151,7 +151,7 @@ class DQAgent:
                 data.append(d)
 
         with torch.no_grad():
-            loader = DataLoader(data, pin_memory=True, num_workers=4, batch_size=sample_size, shuffle=False)
+            loader = DataLoader(data, pin_memory=True, num_workers=2, batch_size=sample_size, shuffle=False)
             for batch in loader:
                 if actions is not None:
                     total_num = 0

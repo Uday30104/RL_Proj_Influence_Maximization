@@ -14,11 +14,16 @@ np.random.seed(123)
 
 class Graph:
     ''' graph class '''
-    def __init__(self, nodes, edges, children, parents): 
+    def __init__(self, nodes, edges, children, parents, communities=None, num_communities=0): 
         self.nodes = nodes # set()
         self.edges = edges # dict{(src,dst): weight, }
         self.children = children # dict{node: set(), }
         self.parents = parents # dict{node: set(), }
+        
+        # --- NEW: Community Attributes ---
+        self.communities = communities if communities is not None else {} # dict{node: set(comm_ids)}
+        self.num_communities = num_communities
+        
         # transfer children and parents to dict{node: list, }
         for node in self.children:
             self.children[node] = sorted(self.children[node])
@@ -65,9 +70,28 @@ class Graph:
             self.from_to_edges()
         return self._from_to_edges_weight
 
+    # --- NEW: Feature Extraction for GNN ---
+    def get_community_features(self):
+        ''' 
+        Returns a multi-hot encoded numpy array of community features 
+        Shape: (num_nodes, num_communities)
+        '''
+        if not self.communities or self.num_communities == 0:
+            # If no communities, fallback to a vector of ones (standard DRL baseline)
+            return np.ones((self.num_nodes, 1))
+            
+        features = np.zeros((self.num_nodes, self.num_communities), dtype=np.float32)
+        for node in self.nodes:
+            if node in self.communities:
+                for comm_id in self.communities[node]:
+                    if comm_id < self.num_communities:
+                        features[node, comm_id] = 1.0
+                        
+        return features
 
-def read_graph(path, ind=0, directed=False):
-    ''' method to load edge as node pair graph '''
+
+def read_graph(path, ind=0, directed=False, community_path=None):
+    ''' method to load edge as node pair graph, and optionally community labels '''
     parents = {}
     children = {}
     edges = {}
@@ -95,8 +119,26 @@ def read_graph(path, ind=0, directed=False):
     # change the probability to 1/indegree
     for src, dst in edges:
         edges[(src, dst)] = 1.0 / len(parents[dst])
+        
+    # --- NEW: Parse SNAP Ground Truth Communities ---
+    communities = {}
+    num_communities = 0
+    if community_path:
+        with open(community_path, 'r') as f:
+            for comm_id, line in enumerate(f):
+                line = line.strip()
+                if not len(line) or line.startswith('#') or line.startswith('%'):
+                    continue
+                
+                # SNAP format: space-separated nodes belonging to the same community on one line
+                row_nodes = line.split()
+                for node_str in row_nodes:
+                    node = int(node_str) - ind
+                    if node in nodes: # Only record if the node exists in our subgraph
+                        communities.setdefault(node, set()).add(comm_id)
+                        num_communities = max(num_communities, comm_id + 1)
             
-    return Graph(nodes, edges, children, parents)
+    return Graph(nodes, edges, children, parents, communities, num_communities)
 
 def computeMC(graph, S, R):
     ''' compute expected influence using MC under IC
@@ -104,6 +146,7 @@ def computeMC(graph, S, R):
     '''
     sources = set(S)
     inf = 0
+    comms_reached = 0
     for _ in range(R):
         source_set = sources.copy()
         queue = deque(source_set)
@@ -118,8 +161,12 @@ def computeMC(graph, S, R):
             queue.extend(curr_source_set)
             source_set |= curr_source_set
         inf += len(source_set)
+        trial_comms = set()
+        for node in source_set:
+            trial_comms.update(graph.communities.get(node, set()))
+        comms_reached += len(trial_comms)
         
-    return inf / R
+    return inf / R, comms_reached / R
 
 def workerMC(x):
     ''' for multiprocessing '''
@@ -128,26 +175,30 @@ def workerMC(x):
 def computeRR(graph, S, R, cache=None):
     ''' compute expected influence using RR under IC
         R: number of trials
-        The generated RR sets are not saved; 
-        We can save those RR sets, then we can use those RR sets
-            for any seed set
-        cache: maybe already generated list of RR sets for the graph
-        l_c: a list of RR set covered, to compute the incremental score
-            for environment step
     '''
     # generate RR set
     covered = 0
     generate_RR = False
     if cache is not None:
         if len(cache) > 0:
-            # might use break for efficiency for large seed set size or number of RR sets
-            return sum(any(s in RR for s in S) for RR in cache) * 1.0 / R * graph.num_nodes
+            covered_targets = []
+            for target, RR in cache:
+                if any(s in RR for s in S):
+                    covered += 1
+                    covered_targets.append(target)
+            
+            unique_comms = set()
+            for t in covered_targets:
+                unique_comms.update(graph.communities.get(t, set()))
+            return covered * 1.0 / R * graph.num_nodes, len(unique_comms)
         else:
             generate_RR = True
 
+    unique_comms = set()
     for i in range(R):
         # generate one set
-        source_set = {random.randint(0, graph.num_nodes - 1)}
+        target = random.randint(0, graph.num_nodes - 1)
+        source_set = {target}
         queue = deque(source_set)
         while True:
             curr_source_set = set()
@@ -159,14 +210,15 @@ def computeRR(graph, S, R, cache=None):
                 break
             queue.extend(curr_source_set)
             source_set |= curr_source_set
-        # compute covered(RR) / number(RR)
+        
         for s in S:
             if s in source_set:
                 covered += 1
+                unique_comms.update(graph.communities.get(target, set()))
                 break
         if generate_RR:
-            cache.append(source_set)
-    return covered * 1.0 / R * graph.num_nodes
+            cache.append((target, source_set))
+    return covered * 1.0 / R * graph.num_nodes, len(unique_comms)
 
 
 def workerRR(x):
@@ -174,27 +226,16 @@ def workerRR(x):
     return computeRR(x[0], x[1], x[2])
 
 def computeRR_inc(graph, S, R, cache=None, l_c=None):
-    ''' compute expected influence using RR under IC
-        R: number of trials
-        The generated RR sets are not saved; 
-        We can save those RR sets, then we can use those RR sets
-            for any seed set
-        cache: maybe already generated list of RR sets for the graph
-        l_c: a list of RR set covered, to compute the incremental score
-            for environment step
-    '''
-    # generate RR set
+    ''' compute expected influence using RR under IC '''
     covered = 0
     generate_RR = False
     if cache is not None:
         if len(cache) > 0:
-            # might use break for efficiency for large seed set size or number of RR sets
             return sum(any(s in RR for s in S) for RR in cache) * 1.0 / R * graph.num_nodes
         else:
             generate_RR = True
 
     for i in range(R):
-        # generate one set
         source_set = {random.randint(0, graph.num_nodes - 1)}
         queue = deque(source_set)
         while True:
@@ -207,7 +248,7 @@ def computeRR_inc(graph, S, R, cache=None, l_c=None):
                 break
             queue.extend(curr_source_set)
             source_set |= curr_source_set
-        # compute covered(RR) / number(RR)
+            
         for s in S:
             if s in source_set:
                 covered += 1
@@ -218,14 +259,15 @@ def computeRR_inc(graph, S, R, cache=None, l_c=None):
 
 
 if __name__ == '__main__':
-    # path of the graph file
+    # You can test the new loader by passing community_path='path/to/com-lj.top5000.cmty.txt'
     path = "../soc-dolphins.txt"
-    # number of parallel processes
     num_process = 5
-    # number of trials
     num_trial = 10000
-    # load the graph
+    
+    # Example initialization with dummy community file (if you had one)
+    # graph = read_graph(path, ind=1, directed=False, community_path="dummy_communities.txt")
     graph = read_graph(path, ind=1, directed=False)
+    
     print('Generating seed sets:')
     list_S = []
     for _ in range(10):
@@ -244,37 +286,6 @@ if __name__ == '__main__':
       times.append(time.time() - time_start)
     time_2 = time.time()
 
-    for i in range(10):
-      print(f'({len(list_S[i])}): {list_S[i]}; {times[i]:.2f} seconds; Score {es_infs[i]}')
-    print(f'Total gross time: {time_2 - time_1:.2f} seconds')
-    print(f'Total time: {sum(times):.2f} seconds')
-
-    # no-cache single-process RR
-    print('No-cache single-process RR:')
-    es_infs = []
-    times = []
-    time_1 = time.time()
-    for S in list_S:
-      time_start = time.time()
-      es_infs.append(computeRR(graph, S, num_trial))
-      times.append(time.time() - time_start)
-    time_2 = time.time()
-    for i in range(10):
-      print(f'({len(list_S[i])}): {list_S[i]}; {times[i]:.2f} seconds; Score {es_infs[i]}')
-    print(f'Total gross time: {time_2 - time_1:.2f} seconds')
-    print(f'Total time: {sum(times):.2f} seconds')
-
-    # multi-process MC
-    print('Multi-process MC:')
-    es_infs = []
-    times = []
-    time_1 = time.time()
-    for S in list_S:
-      time_start = time.time()
-      with Pool(num_process) as p:
-        es_infs.append(statistics.mean(p.map(workerMC, [[graph, S, num_trial // num_process] for _ in range(num_process)])))
-      times.append(time.time() - time_start)
-    time_2 = time.time()
     for i in range(10):
       print(f'({len(list_S[i])}): {list_S[i]}; {times[i]:.2f} seconds; Score {es_infs[i]}')
     print(f'Total gross time: {time_2 - time_1:.2f} seconds')

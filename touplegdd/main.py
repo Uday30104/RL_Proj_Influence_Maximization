@@ -14,7 +14,6 @@ import logging
 torch.manual_seed(123)
 np.random.seed(123)
 
-
 # Set up logger
 logging.basicConfig(
    format='%(asctime)s:%(levelname)s:%(message)s',
@@ -35,6 +34,13 @@ parser.add_argument('--cpu', action='store_true', default=False, help='use CPU')
 parser.add_argument('--test', action='store_true', default=False, help='test performance of model')
 parser.add_argument('--environment_name', metavar='ENV_CLASS', type=str, default='IM', help='Class to use for the environment. Must be in the \'environment\' module')
 
+# --- NEW: Community & Reward Arguments ---
+parser.add_argument('--num_communities', type=int, default=5, help='Number of ground-truth communities in dataset')
+parser.add_argument('--max_per_comm', type=int, default=3, help='Max seed nodes allowed per community')
+parser.add_argument('--community_path', type=str, default=None, help='Path to community ground truth file')
+parser.add_argument('--alpha', type=float, default=1.0, help='Reward weight for raw influence gain')
+parser.add_argument('--beta', type=float, default=10.0, help='Reward weight for reaching a new community')
+
 def main():
     ##### Load Arguments #####
     args = parser.parse_args()
@@ -45,13 +51,34 @@ def main():
     args.device = device
 
     ##### Load Graph #####
-    # read multiple graphs
+    path_graphs = []
+    path_comms = []
     if os.path.isdir(args.graph):
-        path_graphs = [os.path.join(args.graph, file_g) for file_g in os.listdir(args.graph) if not file_g.startswith('.')]
+        graph_files = sorted([f for f in os.listdir(args.graph) if not f.startswith('.')])
+        path_graphs = [os.path.join(args.graph, f) for f in graph_files]
+        
+        if args.community_path and os.path.isdir(args.community_path):
+            comm_files = sorted([f for f in os.listdir(args.community_path) if not f.startswith('.')])
+            if len(comm_files) != len(graph_files):
+                logging.warning("Number of graph files and community files do not match!")
+            path_comms = [os.path.join(args.community_path, f) for f in comm_files]
+        else:
+            path_comms = [args.community_path] * len(path_graphs)
     else: # read one graph
         path_graphs = [args.graph]
-    #graph_lst = [graph_utils.read_graph(path_g, ind=0, directed=False) for path_g in path_graphs]
-    graph_lst = [graph_utils.read_graph(path_g, ind=0, directed=True) for path_g in path_graphs]
+        path_comms = [args.community_path]
+    
+    # --- NEW: Pass corresponding community_path to the graph reader ---
+    graph_lst = []
+    for pg, pc in zip(path_graphs, path_comms):
+        graph_lst.append(graph_utils.read_graph(pg, ind=0, directed=True, community_path=pc))
+        
+    # --- NEW: Autodetect global max communities and pad ---
+    max_comms = max([g.num_communities for g in graph_lst]) if graph_lst else 0
+    args.num_communities = max_comms
+    for g in graph_lst:
+        g.num_communities = max_comms
+
     for i in range(len(path_graphs)):
         graph_lst[i].path_graph = path_graphs[i]
 
@@ -81,8 +108,10 @@ def main():
     ##### Load Environment #####
     # create environment
     logging.info('Loading environment %s' % args.environment_name)
-    train_env = environment.Environment(args.environment_name, graph_lst, args.budget, method='RR', use_cache=True)
-    test_env = environment.Environment(args.environment_name, graph_lst, args.budget, method='MC', use_cache=True)
+    
+    # --- NEW: Pass alpha and beta to the environments ---
+    train_env = environment.Environment(args.environment_name, graph_lst, args.budget, method='RR', use_cache=True, alpha=args.alpha, beta=args.beta)
+    test_env = environment.Environment(args.environment_name, graph_lst, args.budget, method='MC', use_cache=True, alpha=args.alpha, beta=args.beta)
     
     ##### Load Runner and Start Running #####
     print("Running a single instance simulation")

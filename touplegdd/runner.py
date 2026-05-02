@@ -8,6 +8,7 @@ from tqdm import tqdm
 import os
 import time
 from statistics import mean
+import matplotlib.pyplot as plt
 
 torch.manual_seed(123)
 np.random.seed(123)
@@ -33,6 +34,8 @@ class Runner:
 
         c_rewards = []
         im_seeds = []
+        c_influences = []
+        c_comms = []
 
         if time_usage:
             total_time = 0.0 # total time for all iterations on all testing graphs
@@ -80,6 +83,8 @@ class Runner:
 
                         final_reward = self.env.compute_reward(actions)
                         c_rewards.append(final_reward)
+                        c_influences.append(self.env.prev_inf)
+                        c_comms.append(self.env.prev_comm)
 
                     else:
                         for i in count():
@@ -92,12 +97,14 @@ class Runner:
                                 # no sort of action selected
                                 im_seeds.append(self.env.actions)
                                 c_rewards.append(final_reward)
+                                c_influences.append(self.env.prev_inf)
+                                c_comms.append(self.env.prev_comm)
                                 break
                         if time_usage:
                             total_time += time.time() - start_time - time_reward[0]
         if time_usage:
             print(f'Seed set generation per iteration time usage is: {total_time/num_iterations:.2f} seconds')
-        return c_rewards, im_seeds
+        return c_rewards, im_seeds, c_influences, c_comms
 
 
     def train(self, num_epoch, model_file, result_file):
@@ -109,6 +116,15 @@ class Runner:
         eps_start = 1.0
         eps_end = 0.05
         eps_step = 10000.0
+        
+        # --- NEW: Metrics Tracking ---
+        history_epochs = []
+        history_test_rewards = []
+        history_test_influences = []
+        history_test_comms = []
+        history_train_losses = []
+        current_losses = []
+        
         # train
         tqdm.write('Starting fitting:')
         progress_fitting = tqdm(total=num_epoch)
@@ -120,8 +136,19 @@ class Runner:
 
             if epoch % 10 == 0:
                 # test
-                rewards, seeds = self.play_game(1, 0.0, training=False)
-                tqdm.write(f'{epoch}/{num_epoch}: ({str(seeds[0])[1:-1]}) | {rewards[0]}')                
+                rewards, seeds, influences, comms = self.play_game(1, 0.0, training=False)
+                tqdm.write(f'{epoch}/{num_epoch}: ({str(seeds[0])[1:-1]}) | Reward: {rewards[0]:.2f} | Inf: {influences[0]:.2f} | Comms: {comms[0]:.2f}')                
+                
+                # Record metrics
+                history_epochs.append(epoch)
+                history_test_rewards.append(rewards[0])
+                history_test_influences.append(influences[0])
+                history_test_comms.append(comms[0])
+                if len(current_losses) > 0:
+                    history_train_losses.append(mean(current_losses))
+                else:
+                    history_train_losses.append(0.0)
+                current_losses = []
 
             if epoch % 10 == 0:
                 # save model
@@ -130,15 +157,62 @@ class Runner:
             if epoch % 100 == 0:
                 self.agent.update_target_net()
             # train the model
-            self.agent.fit()
+            loss = self.agent.fit()
+            if loss is not None:
+                current_losses.append(loss)
 
             progress_fitting.update(1)
 
         # show test results after training
-        rewards, seeds = self.play_game(1, 0.0, training=False)
-        tqdm.write(f'{num_epoch}/{num_epoch}: ({str(seeds[0])[1:-1]}) | {rewards[0]}')
+        rewards, seeds, influences, comms = self.play_game(1, 0.0, training=False)
+        tqdm.write(f'{num_epoch}/{num_epoch}: ({str(seeds[0])[1:-1]}) | Reward: {rewards[0]:.2f} | Inf: {influences[0]:.2f} | Comms: {comms[0]:.2f}')
 
         self.agent.save_model(model_file)
+        
+        # --- NEW: Generate and Save Plots ---
+        save_dir = os.path.dirname(model_file)
+        if not save_dir:
+            save_dir = '.'
+            
+        plt.figure(figsize=(10, 5))
+        plt.plot(history_epochs, history_train_losses, label='Train Loss (TD Error)', color='blue')
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.title('Training Loss Over Time')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(save_dir, 'train_loss.png'))
+        plt.close()
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(history_epochs, history_test_rewards, label='Validation Reward', color='green')
+        plt.xlabel('Epochs')
+        plt.ylabel('Composite Reward')
+        plt.title('Validation Reward Over Time')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(save_dir, 'validation_reward.png'))
+        plt.close()
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(history_epochs, history_test_influences, label='Validation Influence Spread', color='red')
+        plt.xlabel('Epochs')
+        plt.ylabel('Expected Influence Spread')
+        plt.title('Validation Influence Spread Over Time')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(save_dir, 'validation_influence.png'))
+        plt.close()
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(history_epochs, history_test_comms, label='Validation Communities Reached', color='purple')
+        plt.xlabel('Epochs')
+        plt.ylabel('Expected Unique Communities')
+        plt.title('Validation Communities Reached Over Time')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(save_dir, 'validation_communities.png'))
+        plt.close()
 
 
     def test(self, num_trials=1):
@@ -146,12 +220,12 @@ class Runner:
             num_trials: may need multiple trials to get average
         '''
         print('Generate seeds at one time:', flush=True)
-        all_rewards, all_seeds = self.play_game(num_trials, 0.0, False, time_usage = True, one_time = True)
+        all_rewards, all_seeds, all_influences, all_comms = self.play_game(num_trials, 0.0, False, time_usage = True, one_time = True)
         print(f'Number of trials: {num_trials}')
         print(f'Graph path: {", ".join(g.path_graph for g in self.env.graphs)}')
         cnt = 0
-        for a_r, a_s in zip(all_rewards, all_seeds):
-            print(f'Seeds: {a_s} | Reward: {a_r}')
+        for a_r, a_s, a_i, a_c in zip(all_rewards, all_seeds, all_influences, all_comms):
+            print(f'Seeds: {a_s} | Reward: {a_r:.2f} | Inf: {a_i:.2f} | Comms: {a_c:.2f}')
             if len(self.env.graphs) > 1:
                 cnt += 1
                 if cnt == len(self.env.graphs):
@@ -159,12 +233,12 @@ class Runner:
                     cnt = 0
 
         print('Generate seed one by one:', flush=True)
-        all_rewards, all_seeds = self.play_game(num_trials, 0.0, False, time_usage = True, one_time = False)
+        all_rewards, all_seeds, all_influences, all_comms = self.play_game(num_trials, 0.0, False, time_usage = True, one_time = False)
         print(f'Number of trials: {num_trials}')
         print(f'Graph path: {", ".join(g.path_graph for g in self.env.graphs)}')
         cnt = 0
-        for a_r, a_s in zip(all_rewards, all_seeds):
-            print(f'Seeds: {a_s} | Reward: {a_r}')
+        for a_r, a_s, a_i, a_c in zip(all_rewards, all_seeds, all_influences, all_comms):
+            print(f'Seeds: {a_s} | Reward: {a_r:.2f} | Inf: {a_i:.2f} | Comms: {a_c:.2f}')
             if len(self.env.graphs) > 1:
                 cnt += 1
                 if cnt == len(self.env.graphs):

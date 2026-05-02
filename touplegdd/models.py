@@ -331,7 +331,7 @@ def get_init_node_embed(graph, num_epochs, device):
     model = DeepWalkNeg(graph, embedding_dim=50, walk_length=3, r_hop=5, r_hop_size=5, 
         walks_per_node=50, num_negative_samples=5, restart=0.15, sparse=True).to(device)
 
-    loader = model.loader(batch_size=32, shuffle=True, num_workers=2)
+    loader = model.loader(batch_size=32, shuffle=True, num_workers=4)
     optimizer = torch.optim.SparseAdam(list(model.parameters()), lr=0.01)
 
     def train():

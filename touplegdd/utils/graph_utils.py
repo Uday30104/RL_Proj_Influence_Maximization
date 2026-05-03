@@ -11,6 +11,11 @@ from multiprocessing import Pool
 random.seed(123)
 np.random.seed(123)
 
+# Fixed dimension for community feature hashing.
+# Community IDs are hashed into this many bins, so the GNN input
+# size stays the same whether a graph has 5 or 5,000 communities.
+COMM_HASH_DIM = 64
+
 
 class Graph:
     ''' graph class '''
@@ -70,22 +75,26 @@ class Graph:
             self.from_to_edges()
         return self._from_to_edges_weight
 
-    # --- NEW: Feature Extraction for GNN ---
+    # --- Community Feature Extraction via Feature Hashing ---
     def get_community_features(self):
         ''' 
-        Returns a multi-hot encoded numpy array of community features 
-        Shape: (num_nodes, num_communities)
+        Returns a hashed community feature array of fixed shape
+        (num_node_slots, COMM_HASH_DIM) where num_node_slots = max(node_id)+1.
+        Each community ID is hashed into one of COMM_HASH_DIM bins, so the
+        output dimension is constant regardless of how many communities exist.
         '''
-        if not self.communities or self.num_communities == 0:
-            # If no communities, fallback to a vector of ones (standard DRL baseline)
-            return np.ones((self.num_nodes, 1))
+        # Node IDs may be sparse (non-contiguous), so we size by max ID + 1.
+        num_slots = max(self.nodes) + 1 if self.nodes else self.num_nodes
+        
+        if not self.communities:
+            return np.zeros((num_slots, COMM_HASH_DIM), dtype=np.float32)
             
-        features = np.zeros((self.num_nodes, self.num_communities), dtype=np.float32)
+        features = np.zeros((num_slots, COMM_HASH_DIM), dtype=np.float32)
         for node in self.nodes:
             if node in self.communities:
                 for comm_id in self.communities[node]:
-                    if comm_id < self.num_communities:
-                        features[node, comm_id] = 1.0
+                    bucket = hash(comm_id) % COMM_HASH_DIM
+                    features[node, bucket] += 1.0
                         
         return features
 

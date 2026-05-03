@@ -14,7 +14,7 @@ def main():
     parser.add_argument('--budget', type=int, default=5, help='Budget: number of seed nodes to select')
     parser.add_argument('--model', type=str, default='Tripling', help='Model architecture name (e.g., Tripling)')
     parser.add_argument('--model_file', type=str, required=True, help='Path to the trained model file (.ckpt)')
-    parser.add_argument('--num_communities', type=int, required=True, help='The number of communities the model was originally trained with (required to load the correct neural network shape)')
+    parser.add_argument('--num_communities', type=int, default=1, help='(Legacy) Number of communities. Model shape is now fixed via feature hashing so this only needs to be > 0 to enable community features.')
     parser.add_argument('--cpu', action='store_true', default=False, help='Force use CPU')
     
     args = parser.parse_args()
@@ -28,8 +28,9 @@ def main():
     print(f"Loading test graph from {args.graph}...")
     graph = graph_utils.read_graph(args.graph, ind=0, directed=True, community_path=args.community_path)
     
-    # Ensure the graph object matches the model's expected community tensor shape
-    graph.num_communities = args.num_communities
+    # The model architecture now uses a fixed hash dimension (COMM_HASH_DIM)
+    # so num_communities only needs to be >0 to enable community feature paths.
+    graph.num_communities = graph.num_communities if graph.num_communities > 0 else args.num_communities
     graph.path_graph = args.graph
     args.graphs = [graph]
 

@@ -8,6 +8,7 @@ from torch.nn import Embedding
 from torch.utils.data import DataLoader
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 import utils.graph_utils as graph_utils
+from utils.graph_utils import COMM_HASH_DIM
 from collections import deque
 from tqdm import tqdm
 
@@ -32,7 +33,7 @@ class S2V_DQN(nn.Module):
         # --- NEW: Community Feature Projection ---
         self.num_communities = num_communities
         if self.num_communities > 0:
-            self.comm_proj = nn.Linear(num_communities, embed_dim, bias=True)
+            self.comm_proj = nn.Linear(COMM_HASH_DIM, embed_dim, bias=True)
             torch.nn.init.normal_(self.comm_proj.weight, mean=0, std=w_scale)
 
         # input node to latent
@@ -144,8 +145,8 @@ class Tripling(nn.Module):
         # --- NEW: Community Feature Projections ---
         self.num_communities = num_communities
         if self.num_communities > 0:
-            self.comm_proj_source = nn.Linear(num_communities, embed_dim, bias=True)
-            self.comm_proj_target = nn.Linear(num_communities, embed_dim, bias=True)
+            self.comm_proj_source = nn.Linear(COMM_HASH_DIM, embed_dim, bias=True)
+            self.comm_proj_target = nn.Linear(COMM_HASH_DIM, embed_dim, bias=True)
             torch.nn.init.normal_(self.comm_proj_source.weight, mean=0, std=w_scale)
             torch.nn.init.normal_(self.comm_proj_target.weight, mean=0, std=w_scale)
             

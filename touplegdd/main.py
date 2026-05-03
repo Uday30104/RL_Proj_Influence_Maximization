@@ -77,7 +77,9 @@ def main():
     for pg, pc in zip(path_graphs, path_comms):
         graph_lst.append(graph_utils.read_graph(pg, ind=0, directed=True, community_path=pc))
         
-    # --- NEW: Autodetect global max communities and pad ---
+    # Autodetect community count for logging. Model shape is fixed via
+    # COMM_HASH_DIM in graph_utils, so this value only affects reward
+    # tracking and does not impact the neural network dimensions.
     max_comms = max([g.num_communities for g in graph_lst]) if graph_lst else 0
     args.num_communities = max_comms
     for g in graph_lst:

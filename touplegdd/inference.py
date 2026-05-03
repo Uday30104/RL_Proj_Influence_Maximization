@@ -62,7 +62,7 @@ def main():
     print(f"\nGenerating {args.budget} seed nodes...")
     start_time = time.time()
     
-    test_env.reset(g_idx=0, training=False)
+    test_env.reset(idx=0, training=False)
     state = torch.tensor(test_env.state, dtype=torch.long)
     
     # We use agent.select_action to generate all seeds in one forward pass

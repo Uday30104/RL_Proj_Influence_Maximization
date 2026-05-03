@@ -8,6 +8,8 @@ from tqdm import tqdm
 import os
 import time
 from statistics import mean
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 torch.manual_seed(123)
@@ -256,4 +258,33 @@ class Runner:
         
         plt.tight_layout()
         plt.savefig(os.path.join(save_dir, 'training_diagnostics.png'))
+        plt.close()
+        
+        # --- NEW: Average Metrics Plots ---
+        avg_rewards = np.mean(history_test_rewards, axis=0)
+        avg_influences = np.mean(history_test_influences, axis=0)
+        avg_comms = np.mean(history_test_comms, axis=0)
+        
+        fig, axs = plt.subplots(1, 3, figsize=(20, 5))
+        
+        axs[0].plot(history_epochs, avg_rewards, color='green')
+        axs[0].set_xlabel('Epochs')
+        axs[0].set_ylabel('Avg Composite Reward')
+        axs[0].set_title('Average Reward Across All Graphs')
+        axs[0].grid(True)
+        
+        axs[1].plot(history_epochs, avg_influences, color='orange')
+        axs[1].set_xlabel('Epochs')
+        axs[1].set_ylabel('Avg Expected Influence Spread')
+        axs[1].set_title('Average Influence Across All Graphs')
+        axs[1].grid(True)
+        
+        axs[2].plot(history_epochs, avg_comms, color='purple')
+        axs[2].set_xlabel('Epochs')
+        axs[2].set_ylabel('Avg Expected Unique Communities')
+        axs[2].set_title('Average Communities Across All Graphs')
+        axs[2].grid(True)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, 'average_metrics.png'))
         plt.close()

@@ -12,3 +12,7 @@ outputs/
 
 # OS junk
 .DS_Store
+
+# dataset
+actual_graph.txt
+actual_graph_communities.txt

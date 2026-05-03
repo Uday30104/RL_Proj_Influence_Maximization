@@ -4,6 +4,14 @@ Implementation of "ToupleGDD: A Fine-Designed Solution of Influence Maximization
 
 Run the code
 ------------
+ python main.py   --graph train_graphs_new/   --community_path train_comms_new/   --budget 5   --alpha 10.0   --beta 1.0   --bs 16   --epoch 10000   --model Tripling   --model_file tripling.ckpt   --n_step 2
+
+
+
+ inference: 
+
+ python inference.py   --graph test_graph_new.txt   --community_path test_comms_new.txt   --model_file "2026-05-03_14:14:18/tripling.ckpt650"   --num_communities 1   --budget 5
+
 
 #### Train ToupleGDD model
 
@@ -22,6 +30,10 @@ Run the code
                      --model_file tripling.ckpt \
                      --budget 10 \
                      --test
+
+
+
+                    
 
 #### Train S2V-DQN model
 

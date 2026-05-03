@@ -162,6 +162,9 @@ class Runner:
             if epoch % 10 == 0:
                 # save model
                 self.agent.save_model(model_file + str(epoch))
+                # save plots periodically side by side
+                if len(history_epochs) > 0:
+                    self._save_plots(model_file, history_epochs, history_train_losses, history_test_rewards, history_test_influences, history_test_comms)
 
             if epoch % 100 == 0:
                 self.agent.update_target_net()
@@ -179,53 +182,9 @@ class Runner:
 
         self.agent.save_model(model_file)
         
-        # --- NEW: Generate and Save Plots ---
-        save_dir = os.path.dirname(model_file)
-        if not save_dir:
-            save_dir = '.'
-            
-        plt.figure(figsize=(10, 5))
-        plt.plot(history_epochs, history_train_losses, label='Train Loss (TD Error)', color='blue')
-        plt.xlabel('Epochs')
-        plt.ylabel('Loss')
-        plt.title('Training Loss Over Time')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(os.path.join(save_dir, 'train_loss.png'))
-        plt.close()
-        
-        plt.figure(figsize=(10, 5))
-        for g_idx in range(num_graphs):
-            plt.plot(history_epochs, history_test_rewards[g_idx], label=f'Graph {g_idx}')
-        plt.xlabel('Epochs')
-        plt.ylabel('Composite Reward')
-        plt.title('Validation Reward Over Time')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(os.path.join(save_dir, 'validation_reward.png'))
-        plt.close()
-        
-        plt.figure(figsize=(10, 5))
-        for g_idx in range(num_graphs):
-            plt.plot(history_epochs, history_test_influences[g_idx], label=f'Graph {g_idx}')
-        plt.xlabel('Epochs')
-        plt.ylabel('Expected Influence Spread')
-        plt.title('Validation Influence Spread Over Time')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(os.path.join(save_dir, 'validation_influence.png'))
-        plt.close()
-        
-        plt.figure(figsize=(10, 5))
-        for g_idx in range(num_graphs):
-            plt.plot(history_epochs, history_test_comms[g_idx], label=f'Graph {g_idx}')
-        plt.xlabel('Epochs')
-        plt.ylabel('Expected Unique Communities')
-        plt.title('Validation Communities Reached Over Time')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(os.path.join(save_dir, 'validation_communities.png'))
-        plt.close()
+        # --- Generate and Save Plots ---
+        if len(history_epochs) > 0:
+            self._save_plots(model_file, history_epochs, history_train_losses, history_test_rewards, history_test_influences, history_test_comms)
 
 
     def test(self, num_trials=1):
@@ -257,3 +216,44 @@ class Runner:
                 if cnt == len(self.env.graphs):
                     print('')
                     cnt = 0
+
+    def _save_plots(self, model_file, history_epochs, history_train_losses, history_test_rewards, history_test_influences, history_test_comms):
+        save_dir = os.path.dirname(model_file)
+        if not save_dir:
+            save_dir = '.'
+            
+        num_graphs = len(history_test_rewards)
+            
+        fig, axs = plt.subplots(2, 2, figsize=(20, 10))
+        
+        axs[0, 0].plot(history_epochs, history_train_losses, label='Train Loss (TD Error)', color='blue')
+        axs[0, 0].set_xlabel('Epochs')
+        axs[0, 0].set_ylabel('Loss')
+        axs[0, 0].set_title('Training Loss Over Time')
+        axs[0, 0].legend()
+        axs[0, 0].grid(True)
+        
+        for g_idx in range(num_graphs):
+            axs[0, 1].plot(history_epochs, history_test_rewards[g_idx], label=f'Graph {g_idx}')
+        axs[0, 1].set_xlabel('Epochs')
+        axs[0, 1].set_ylabel('Composite Reward')
+        axs[0, 1].set_title('Validation Reward Over Time')
+        axs[0, 1].grid(True)
+        
+        for g_idx in range(num_graphs):
+            axs[1, 0].plot(history_epochs, history_test_influences[g_idx], label=f'Graph {g_idx}')
+        axs[1, 0].set_xlabel('Epochs')
+        axs[1, 0].set_ylabel('Expected Influence Spread')
+        axs[1, 0].set_title('Validation Influence Spread Over Time')
+        axs[1, 0].grid(True)
+        
+        for g_idx in range(num_graphs):
+            axs[1, 1].plot(history_epochs, history_test_comms[g_idx], label=f'Graph {g_idx}')
+        axs[1, 1].set_xlabel('Epochs')
+        axs[1, 1].set_ylabel('Expected Unique Communities')
+        axs[1, 1].set_title('Validation Communities Reached Over Time')
+        axs[1, 1].grid(True)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, 'training_diagnostics.png'))
+        plt.close()

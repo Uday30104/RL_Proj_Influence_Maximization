@@ -94,6 +94,13 @@ class DQAgent:
             cwd = os.getcwd()
             self.model.load_state_dict(torch.load(os.path.join(cwd, args.model_file)), strict=False)
             self.model.eval()
+        elif self.training and getattr(args, 'resume', None):
+            cwd = os.getcwd()
+            checkpoint_path = os.path.join(cwd, args.resume)
+            print(f'Resuming training from checkpoint: {checkpoint_path}')
+            self.model.load_state_dict(torch.load(checkpoint_path), strict=False)
+            if self.double_dqn:
+                self.target.load_state_dict(self.model.state_dict())
 
     def reset(self):
         ''' restart '''

@@ -1,6 +1,7 @@
 import argparse
 import sys
 import os
+import re
 import time
 import datetime
 import numpy as np
@@ -40,6 +41,8 @@ parser.add_argument('--max_per_comm', type=int, default=3, help='Max seed nodes 
 parser.add_argument('--community_path', type=str, default=None, help='Path to community ground truth file')
 parser.add_argument('--alpha', type=float, default=1.0, help='Reward weight for raw influence gain')
 parser.add_argument('--beta', type=float, default=10.0, help='Reward weight for reaching a new community')
+parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint to resume training from')
+parser.add_argument('--start_epoch', type=int, default=0, help='Starting epoch (for epsilon schedule when resuming)')
 
 def main():
     ##### Load Arguments #####
@@ -54,11 +57,12 @@ def main():
     path_graphs = []
     path_comms = []
     if os.path.isdir(args.graph):
-        graph_files = sorted([f for f in os.listdir(args.graph) if not f.startswith('.')])
+        natural_key = lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', s)]
+        graph_files = sorted([f for f in os.listdir(args.graph) if not f.startswith('.')], key=natural_key)
         path_graphs = [os.path.join(args.graph, f) for f in graph_files]
         
         if args.community_path and os.path.isdir(args.community_path):
-            comm_files = sorted([f for f in os.listdir(args.community_path) if not f.startswith('.')])
+            comm_files = sorted([f for f in os.listdir(args.community_path) if not f.startswith('.')], key=natural_key)
             if len(comm_files) != len(graph_files):
                 logging.warning("Number of graph files and community files do not match!")
             path_comms = [os.path.join(args.community_path, f) for f in comm_files]
@@ -117,7 +121,8 @@ def main():
     print("Running a single instance simulation")
     my_runner = runner.Runner(train_env, test_env, agent, not(args.test))
     if not(args.test):
-        my_runner.train(args.epoch, args.model_file, 'list_cumul_reward.txt')
+        my_runner.train(args.epoch, args.model_file, 'list_cumul_reward.txt', 
+                        start_epoch=args.start_epoch, resume=args.resume is not None)
     else:
         my_runner.test(num_trials=10)
 

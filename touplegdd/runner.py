@@ -107,11 +107,15 @@ class Runner:
         return c_rewards, im_seeds, c_influences, c_comms
 
 
-    def train(self, num_epoch, model_file, result_file):
+    def train(self, num_epoch, model_file, result_file, start_epoch=0, resume=False):
         ''' let agent act and learn from the environment '''
         # pretrain
-        tqdm.write('Pretraining:')
-        self.play_game(1000, 1.0)
+        if resume:
+            tqdm.write('Resuming from checkpoint — running short warmup (100 episodes):')
+            self.play_game(100, 0.5)
+        else:
+            tqdm.write('Pretraining:')
+            self.play_game(1000, 1.0)
 
         eps_start = 1.0
         eps_end = 0.05
@@ -131,7 +135,8 @@ class Runner:
         tqdm.write('Starting fitting:')
         progress_fitting = tqdm(total=num_epoch)
         for epoch in range(num_epoch):
-            eps = eps_end + max(0., (eps_start - eps_end) * (eps_step - epoch) / eps_step)
+            global_epoch = epoch + start_epoch
+            eps = eps_end + max(0., (eps_start - eps_end) * (eps_step - global_epoch) / eps_step)
             
             if epoch % 10 == 0:
                 self.play_game(10, eps)
@@ -140,10 +145,10 @@ class Runner:
                 # test
                 rewards, seeds, influences, comms = self.play_game(1, 0.0, training=False)
                 for g_idx in range(len(rewards)):
-                    tqdm.write(f'{epoch}/{num_epoch} [graph {g_idx}]: ({str(seeds[g_idx])[1:-1]}) | Reward: {rewards[g_idx]:.2f} | Inf: {influences[g_idx]:.2f} | Comms: {comms[g_idx]:.2f}')                
+                    tqdm.write(f'{global_epoch}/{start_epoch + num_epoch} [graph {g_idx}]: ({str(seeds[g_idx])[1:-1]}) | Reward: {rewards[g_idx]:.2f} | Inf: {influences[g_idx]:.2f} | Comms: {comms[g_idx]:.2f}')                
                 
                 # Record metrics
-                history_epochs.append(epoch)
+                history_epochs.append(global_epoch)
                 for g_idx in range(len(rewards)):
                     history_test_rewards[g_idx].append(rewards[g_idx])
                     history_test_influences[g_idx].append(influences[g_idx])
@@ -170,7 +175,7 @@ class Runner:
         # show test results after training
         rewards, seeds, influences, comms = self.play_game(1, 0.0, training=False)
         for g_idx in range(len(rewards)):
-            tqdm.write(f'{num_epoch}/{num_epoch} [graph {g_idx}]: ({str(seeds[g_idx])[1:-1]}) | Reward: {rewards[g_idx]:.2f} | Inf: {influences[g_idx]:.2f} | Comms: {comms[g_idx]:.2f}')
+            tqdm.write(f'{start_epoch + num_epoch}/{start_epoch + num_epoch} [graph {g_idx}]: ({str(seeds[g_idx])[1:-1]}) | Reward: {rewards[g_idx]:.2f} | Inf: {influences[g_idx]:.2f} | Comms: {comms[g_idx]:.2f}')
 
         self.agent.save_model(model_file)
         

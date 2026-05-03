@@ -38,6 +38,10 @@ def main():
     args.T = 3
     args.memory_size = 50000
     args.reg_hidden = 32
+    args.n_step = 2
+    args.bs = 8
+    args.lr = 1e-3
+    
     if args.model == 'Tripling':
         args.embed_dim = 50
     else:

@@ -97,7 +97,7 @@ def main():
     graph_lst = []
     for pg, pc in zip(path_graphs, path_comms):
         graph_lst.append(
-            graph_utils.read_graph(pg, ind=0, directed=True,
+            graph_utils.read_graph(pg, ind=0, directed=False,
                                    community_path=pc))
 
     for i, pg in enumerate(path_graphs):

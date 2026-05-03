@@ -16,3 +16,4 @@ outputs/
 # dataset
 actual_graph.txt
 actual_graph_communities.txt
+top_5000_communities.txt

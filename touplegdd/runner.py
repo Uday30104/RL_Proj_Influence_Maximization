@@ -118,10 +118,12 @@ class Runner:
         eps_step = 10000.0
         
         # --- NEW: Metrics Tracking ---
+        num_graphs = len(self.test_env.graphs)
         history_epochs = []
-        history_test_rewards = []
-        history_test_influences = []
-        history_test_comms = []
+        # Per-graph metric histories
+        history_test_rewards = [[] for _ in range(num_graphs)]
+        history_test_influences = [[] for _ in range(num_graphs)]
+        history_test_comms = [[] for _ in range(num_graphs)]
         history_train_losses = []
         current_losses = []
         
@@ -137,16 +139,15 @@ class Runner:
             if epoch % 10 == 0:
                 # test
                 rewards, seeds, influences, comms = self.play_game(1, 0.0, training=False)
-                avg_reward = mean(rewards)
-                avg_inf = mean(influences)
-                avg_comms = mean(comms)
-                tqdm.write(f'{epoch}/{num_epoch}: [Avg across {len(rewards)} graphs] | Reward: {avg_reward:.2f} | Inf: {avg_inf:.2f} | Comms: {avg_comms:.2f}')                
+                for g_idx in range(len(rewards)):
+                    tqdm.write(f'{epoch}/{num_epoch} [graph {g_idx}]: ({str(seeds[g_idx])[1:-1]}) | Reward: {rewards[g_idx]:.2f} | Inf: {influences[g_idx]:.2f} | Comms: {comms[g_idx]:.2f}')                
                 
                 # Record metrics
                 history_epochs.append(epoch)
-                history_test_rewards.append(avg_reward)
-                history_test_influences.append(avg_inf)
-                history_test_comms.append(avg_comms)
+                for g_idx in range(len(rewards)):
+                    history_test_rewards[g_idx].append(rewards[g_idx])
+                    history_test_influences[g_idx].append(influences[g_idx])
+                    history_test_comms[g_idx].append(comms[g_idx])
                 if len(current_losses) > 0:
                     history_train_losses.append(mean(current_losses))
                 else:
@@ -168,10 +169,8 @@ class Runner:
 
         # show test results after training
         rewards, seeds, influences, comms = self.play_game(1, 0.0, training=False)
-        avg_reward = mean(rewards)
-        avg_inf = mean(influences)
-        avg_comms = mean(comms)
-        tqdm.write(f'{num_epoch}/{num_epoch}: [Avg across {len(rewards)} graphs] | Reward: {avg_reward:.2f} | Inf: {avg_inf:.2f} | Comms: {avg_comms:.2f}')
+        for g_idx in range(len(rewards)):
+            tqdm.write(f'{num_epoch}/{num_epoch} [graph {g_idx}]: ({str(seeds[g_idx])[1:-1]}) | Reward: {rewards[g_idx]:.2f} | Inf: {influences[g_idx]:.2f} | Comms: {comms[g_idx]:.2f}')
 
         self.agent.save_model(model_file)
         
@@ -191,7 +190,8 @@ class Runner:
         plt.close()
         
         plt.figure(figsize=(10, 5))
-        plt.plot(history_epochs, history_test_rewards, label='Validation Reward', color='green')
+        for g_idx in range(num_graphs):
+            plt.plot(history_epochs, history_test_rewards[g_idx], label=f'Graph {g_idx}')
         plt.xlabel('Epochs')
         plt.ylabel('Composite Reward')
         plt.title('Validation Reward Over Time')
@@ -201,7 +201,8 @@ class Runner:
         plt.close()
         
         plt.figure(figsize=(10, 5))
-        plt.plot(history_epochs, history_test_influences, label='Validation Influence Spread', color='red')
+        for g_idx in range(num_graphs):
+            plt.plot(history_epochs, history_test_influences[g_idx], label=f'Graph {g_idx}')
         plt.xlabel('Epochs')
         plt.ylabel('Expected Influence Spread')
         plt.title('Validation Influence Spread Over Time')
@@ -211,7 +212,8 @@ class Runner:
         plt.close()
         
         plt.figure(figsize=(10, 5))
-        plt.plot(history_epochs, history_test_comms, label='Validation Communities Reached', color='purple')
+        for g_idx in range(num_graphs):
+            plt.plot(history_epochs, history_test_comms[g_idx], label=f'Graph {g_idx}')
         plt.xlabel('Epochs')
         plt.ylabel('Expected Unique Communities')
         plt.title('Validation Communities Reached Over Time')
